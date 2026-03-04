@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+	<Product Id="*"
+			 Name="Screen Lock App"
+			 Language="1033"
+			 Version="1.0.0.0"
+			 Manufacturer="Your Company Name"
+			 UpgradeCode="A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D">
+
+		<Package InstallerVersion="200"
+				 Compressed="yes"
+				 InstallScope="perMachine"
+				 Description="Screen Lock Application Installer"
+				 Comments="Locks your screen with password protection" />
+
+		<MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+		<MediaTemplate EmbedCab="yes" />
+
+		<Feature Id="ProductFeature" Title="Screen Lock App" Level="1">
+			<ComponentGroupRef Id="ProductComponents" />
+			<ComponentRef Id="ApplicationShortcut" />
+		</Feature>
+
+		<!-- UI -->
+		<UIRef Id="WixUI_Minimal" />
+		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+		<!-- Directory Structure -->
+		<Directory Id="TARGETDIR" Name="SourceDir">
+			<Directory Id="ProgramFilesFolder">
+				<Directory Id="INSTALLFOLDER" Name="Screen Lock App" />
+			</Directory>
+
+			<!-- Start Menu -->
+			<Directory Id="ProgramMenuFolder">
+				<Directory Id="ApplicationProgramsFolder" Name="Screen Lock App"/>
+			</Directory>
+		</Directory>
+
+		<!-- Start Menu Shortcut -->
+		<DirectoryRef Id="ApplicationProgramsFolder">
+			<Component Id="ApplicationShortcut" Guid="B2C3D4E5-F6A7-4B8C-9D0E-1F2A3B4C5D6E">
+				<Shortcut Id="ApplicationStartMenuShortcut"
+						  Name="Screen Lock App"
+						  Description="Lock your screen with password"
+						  Target="[INSTALLFOLDER]ScreenLockApp.exe"
+						  WorkingDirectory="INSTALLFOLDER"/>
+				<RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall"/>
+				<RegistryValue Root="HKCU"
+							   Key="Software\ScreenLockApp"
+							   Name="installed"
+							   Type="integer"
+							   Value="1"
+							   KeyPath="yes"/>
+			</Component>
+		</DirectoryRef>
+	</Product>
+
+	<!-- Components to Install -->
+	<Fragment>
+		<ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+			<Component Id="MainExecutable" Guid="C3D4E5F6-A7B8-4C9D-0E1F-2A3B4C5D6E7F">
+				<File Id="ScreenLockAppExe"
+					  Name="ScreenLockApp.exe"
+					  Source="$(var.ScreenLockApp.TargetPath)"
+					  KeyPath="yes" />
+			</Component>
+		</ComponentGroup>
+	</Fragment>
+</Wix>
