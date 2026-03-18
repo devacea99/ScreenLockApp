@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace ScreenLockApp
@@ -14,12 +11,31 @@ namespace ScreenLockApp
         private TextBox txtPassword;
         private Button btnUnlock;
         private AppSettings settings;
+        private Timer checkFocusTimer;
+
+        // Windows API to disable Task Manager
+        [DllImport("user32.dll")]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [DllImport("user32.dll")]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_TOOLWINDOW = 0x00000080;
 
         public LockOverlay(AppSettings settings)
         {
             this.settings = settings;
             InitializeCustomComponents();
             SetupForm();
+            SetupFocusMonitor();
+            DisableTaskManager();
         }
 
         private void SetupForm()
@@ -44,9 +60,58 @@ namespace ScreenLockApp
             }
             this.Bounds = new Rectangle(minX, minY, maxX - minX, maxY - minY);
 
-            // Block Alt+F4, Alt+Tab, etc.
+            // Block Alt+F4, Alt+Tab, keyboard shortcuts, etc.
             this.KeyPreview = true;
             this.KeyDown += LockOverlay_KeyDown;
+        }
+
+        private void SetupFocusMonitor()
+        {
+            // Timer to constantly bring window back to front
+            checkFocusTimer = new Timer();
+            checkFocusTimer.Interval = 100; // Check every 100ms
+            checkFocusTimer.Tick += (s, e) =>
+            {
+                if (GetForegroundWindow() != this.Handle)
+                {
+                    SetForegroundWindow(this.Handle);
+                    this.BringToFront();
+                    this.Activate();
+                }
+            };
+            checkFocusTimer.Start();
+        }
+
+        private void DisableTaskManager()
+        {
+            try
+            {
+                // Disable Task Manager via registry
+                Microsoft.Win32.RegistryKey regkey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Policies\System");
+                regkey.SetValue("DisableTaskMgr", 1);
+                regkey.Close();
+            }
+            catch
+            {
+                // If we can't disable task manager, continue anyway
+            }
+        }
+
+        private void EnableTaskManager()
+        {
+            try
+            {
+                // Re-enable Task Manager
+                Microsoft.Win32.RegistryKey regkey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Policies\System");
+                regkey.SetValue("DisableTaskMgr", 0);
+                regkey.Close();
+            }
+            catch
+            {
+                // Continue anyway
+            }
         }
 
         private void InitializeCustomComponents()
@@ -55,15 +120,15 @@ namespace ScreenLockApp
 
             // Message Label
             lblMessage = new Label();
-            lblMessage.Text = "Screen Locked\n\nEnter password or press unlock shortcut";
+            lblMessage.Text = "🔒 Screen Locked\n\nEnter password or press unlock shortcut";
             lblMessage.Font = new Font("Segoe UI", 24F, FontStyle.Bold);
             lblMessage.ForeColor = Color.White;
             lblMessage.AutoSize = false;
             lblMessage.TextAlign = ContentAlignment.MiddleCenter;
-            lblMessage.Size = new Size(600, 150);
+            lblMessage.Size = new Size(700, 180);
             lblMessage.Location = new Point(
-                (Screen.PrimaryScreen.Bounds.Width - 600) / 2,
-                (Screen.PrimaryScreen.Bounds.Height - 300) / 2
+                (Screen.PrimaryScreen.Bounds.Width - 700) / 2,
+                (Screen.PrimaryScreen.Bounds.Height - 350) / 2
             );
 
             // Password TextBox
@@ -120,14 +185,29 @@ namespace ScreenLockApp
             }
             else
             {
-                MessageBox.Show("Incorrect password!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // Stop the focus timer temporarily to allow MessageBox to show
+                checkFocusTimer?.Stop();
+
+                // Show error message
+                MessageBox.Show(this, "Incorrect password!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+                // Restart the focus timer
+                checkFocusTimer?.Start();
+
+                // Clear and refocus
                 txtPassword.Clear();
                 txtPassword.Focus();
+
+                // Bring window back to front
+                this.BringToFront();
+                this.Activate();
             }
         }
 
         public void UnlockScreen()
         {
+            checkFocusTimer?.Stop();
+            EnableTaskManager();
             this.Close();
         }
 
@@ -137,14 +217,24 @@ namespace ScreenLockApp
             if (e.Alt && e.KeyCode == Keys.F4)
             {
                 e.Handled = true;
+                e.SuppressKeyPress = true;
             }
             if (e.Alt && e.KeyCode == Keys.Tab)
             {
                 e.Handled = true;
+                e.SuppressKeyPress = true;
             }
             if (e.Control && e.Shift && e.KeyCode == Keys.Escape)
             {
                 e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            if (e.Control && e.Alt && e.KeyCode == Keys.Delete)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                // Show message that it's blocked
+                lblMessage.Text = "🔒 Screen Locked\n\nCtrl+Alt+Del is disabled\n\nEnter password or press unlock shortcut";
             }
         }
 
@@ -152,6 +242,13 @@ namespace ScreenLockApp
         {
             // Block all mouse clicks
             return;
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            checkFocusTimer?.Stop();
+            EnableTaskManager();
+            base.OnFormClosing(e);
         }
 
         protected override CreateParams CreateParams
@@ -162,6 +259,12 @@ namespace ScreenLockApp
                 cp.ExStyle |= 0x80; // WS_EX_TOOLWINDOW
                 return cp;
             }
+        }
+
+        protected override void OnActivated(EventArgs e)
+        {
+            base.OnActivated(e);
+            txtPassword.Focus();
         }
     }
 }
